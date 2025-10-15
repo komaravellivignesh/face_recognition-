@@ -1,0 +1,85 @@
+{% extends 'base.html' %}
+
+{% block title %}Test Recognition - CogniFace{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2>Test Recognition - {{ result.student.name }}</h2>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Test Results</h5>
+            </div>
+            <div class="card-body">
+                <p><strong>Student:</strong> {{ result.student.name }} ({{ result.student.student_id }})</p>
+                <p><strong>Test Image Loaded:</strong> 
+                    {% if result.test_image_loaded %}
+                        <span class="badge bg-success">Yes</span>
+                    {% else %}
+                        <span class="badge bg-danger">No</span>
+                    {% endif %}
+                </p>
+                <p><strong>Faces Detected:</strong> {{ result.faces_detected }}</p>
+                <p><strong>Recognition Result:</strong> 
+                    {% if result.recognition_result %}
+                        {{ result.recognition_result }}
+                    {% else %}
+                        <span class="text-muted">No result</span>
+                    {% endif %}
+                </p>
+                {% if result.distance_info %}
+                <p><strong>Info:</strong> {{ result.distance_info }}</p>
+                {% endif %}
+                {% if result.error %}
+                <div class="alert alert-danger">{{ result.error }}</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Photo Preview</h5>
+            </div>
+            <div class="card-body text-center">
+                {% if result.student.photo_path %}
+                    <img src="{{ url_for('static', filename=result.student.photo_path) if 'static' in result.student.photo_path else '/' + result.student.photo_path }}" 
+                         class="img-fluid" style="max-height: 300px;"
+                         onerror="this.style.display='none'; document.getElementById('photoError').style.display='block';">
+                    <div id="photoError" style="display: none;" class="alert alert-danger">
+                        Could not load photo.
+                    </div>
+                    <p class="mt-2"><small>Path: {{ result.student.photo_path }}</small></p>
+                {% else %}
+                    <p class="text-muted">No photo available</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <a href="{{ url_for('debug_students') }}" class="btn btn-secondary">Back to Debug</a>
+                <a href="{{ url_for('test_recognition', student_id=result.student.student_id) }}" class="btn btn-info">Test Again</a>
+                <form method="POST" action="{{ url_for('reencode_face', student_id=result.student.id) }}" style="display: inline;">
+                    <button type="submit" class="btn btn-warning">Re-encode This Face</button>
+                </form>
+                <a href="{{ url_for('reencode_all_faces') }}" class="btn btn-danger">Re-encode All Faces</a>
+                <a href="{{ url_for('live_attendance') }}" class="btn btn-success">Test Live Attendance</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

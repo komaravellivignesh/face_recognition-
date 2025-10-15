@@ -1,0 +1,89 @@
+{% extends 'base.html' %}
+
+{% block title %}Debug Students - CogniFace{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2>Student Debug Information - {{ college.name }}</h2>
+        <p class="text-muted">Check if student photos and face encodings are working properly</p>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Student Status</h5>
+            </div>
+            <div class="card-body">
+                {% if debug_info %}
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Student ID</th>
+                                    <th>Name</th>
+                                    <th>Photo Path</th>
+                                    <th>Photo Exists</th>
+                                    <th>Has Encoding</th>
+                                    <th>Photo Preview</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for info in debug_info %}
+                                <tr>
+                                    <td>{{ info.student.student_id }}</td>
+                                    <td>{{ info.student.name }}</td>
+                                    <td><code>{{ info.photo_path }}</code></td>
+                                    <td>
+                                        {% if info.photo_exists %}
+                                            <span class="badge bg-success">Yes</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">No</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if info.has_encoding %}
+                                            <span class="badge bg-success">Yes</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">No</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if info.photo_exists %}
+                                            <img src="{{ url_for('static', filename=info.photo_path) if 'static' in info.photo_path else '/' + info.photo_path }}" 
+                                                 width="50" height="50" style="object-fit: cover;" 
+                                                 onerror="this.style.display='none'">
+                                        {% else %}
+                                            <span class="text-muted">No photo</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if info.photo_exists and not info.has_encoding %}
+                                            <form method="POST" action="{{ url_for('reencode_face', student_id=info.student.id) }}" style="display: inline;">
+                                                <button type="submit" class="btn btn-warning btn-sm">Re-encode Face</button>
+                                            </form>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p class="text-muted">No students found.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-12">
+        <a href="{{ url_for('dashboard') }}" class="btn btn-primary">Back to Dashboard</a>
+        <a href="{{ url_for('add_student') }}" class="btn btn-success">Add New Student</a>
+    </div>
+</div>
+{% endblock %}

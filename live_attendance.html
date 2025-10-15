@@ -1,0 +1,365 @@
+{% extends 'base.html' %}
+
+{% block title %}Live Attendance - CogniFace{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2>Live Face Recognition Attendance - {{ college.name }}</h2>
+        <p class="text-muted">Automatic face detection and attendance marking</p>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Camera Feed - Auto Detection</h5>
+            </div>
+            <div class="card-body">
+                <div id="camera-container" class="text-center">
+                    <video id="video" width="640" height="480" autoplay muted playsinline></video>
+                    <canvas id="canvas" width="640" height="480" style="display: none;"></canvas>
+                </div>
+                <div class="mt-3">
+                    <button id="startCamera" class="btn btn-success">Start Auto Detection</button>
+                    <button id="stopCamera" class="btn btn-danger" disabled>Stop Detection</button>
+                    <button id="manualCapture" class="btn btn-warning" disabled>Manual Capture</button>
+                </div>
+                <div id="cameraStatus" class="mt-2"></div>
+                
+                <div class="mt-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="autoCapture" checked>
+                        <label class="form-check-label" for="autoCapture">
+                            Enable Auto Capture (scans every 3 seconds)
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="showFaceBox" checked>
+                        <label class="form-check-label" for="showFaceBox">
+                            Show face detection boxes
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Attendance Log</h5>
+                <span class="badge bg-primary" id="attendanceCount">0</span>
+            </div>
+            <div class="card-body">
+                <div id="attendanceLog" style="max-height: 400px; overflow-y: auto;">
+                    <p class="text-muted">Automatic attendance records will appear here...</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="mb-0">Current Session Summary</h5>
+            </div>
+            <div class="card-body">
+                <div id="sessionSummary">
+                    <p><strong>Total Recognitions:</strong> <span id="totalRecognitions">0</span></p>
+                    <p><strong>Successful:</strong> <span id="successfulRecognitions">0</span></p>
+                    <p><strong>Failed:</strong> <span id="failedRecognitions">0</span></p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Real-time face display canvas -->
+<canvas id="overlayCanvas" width="640" height="480" style="display: none;"></canvas>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let video = document.getElementById('video');
+let canvas = document.getElementById('canvas');
+let overlayCanvas = document.getElementById('overlayCanvas');
+let startButton = document.getElementById('startCamera');
+let stopButton = document.getElementById('stopCamera');
+let manualCaptureButton = document.getElementById('manualCapture');
+let statusDiv = document.getElementById('cameraStatus');
+let stream = null;
+let recognitionInterval = null;
+let isAutoCaptureEnabled = true;
+
+// Session tracking
+let sessionStats = {
+    total: 0,
+    success: 0,
+    failed: 0
+};
+
+// Track recently recognized students to avoid duplicates
+let recentlyRecognized = new Set();
+const RECOGNITION_COOLDOWN = 10000; // 10 seconds cooldown
+
+startButton.addEventListener('click', startCamera);
+stopButton.addEventListener('click', stopCamera);
+manualCaptureButton.addEventListener('click', manualCapture);
+
+// Auto-capture checkbox
+document.getElementById('autoCapture').addEventListener('change', function(e) {
+    isAutoCaptureEnabled = e.target.checked;
+    statusDiv.innerHTML = `<div class="alert alert-info">Auto capture ${isAutoCaptureEnabled ? 'enabled' : 'disabled'}</div>`;
+});
+
+function startCamera() {
+    if (!checkCameraSupport()) return;
+    
+    statusDiv.innerHTML = '<div class="alert alert-info">Starting camera and auto-detection...</div>';
+    
+    const constraints = {
+        video: {
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+            facingMode: 'user'
+        },
+        audio: false
+    };
+
+    navigator.mediaDevices.getUserMedia(constraints)
+        .then(function(s) {
+            stream = s;
+            video.srcObject = stream;
+            
+            startButton.disabled = true;
+            stopButton.disabled = false;
+            manualCaptureButton.disabled = false;
+            
+            // Start automatic recognition every 3 seconds
+            recognitionInterval = setInterval(autoCaptureAndRecognize, 3000);
+            
+            statusDiv.innerHTML = '<div class="alert alert-success">Auto-detection started! System will scan for faces every 3 seconds.</div>';
+            updateSessionSummary();
+        })
+        .catch(function(err) {
+            console.error("Error accessing camera: ", err);
+            let errorMessage = "Error accessing camera: ";
+            
+            if (err.name === 'NotAllowedError') {
+                errorMessage += "Camera permission denied. Please allow camera access and try again.";
+            } else if (err.name === 'NotFoundError') {
+                errorMessage += "No camera found. Please check if your camera is connected.";
+            } else if (err.name === 'NotSupportedError') {
+                errorMessage += "Camera not supported in your browser.";
+            } else {
+                errorMessage += err.message;
+            }
+            
+            statusDiv.innerHTML = `<div class="alert alert-danger">${errorMessage}</div>`;
+        });
+}
+
+function stopCamera() {
+    if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+    }
+    if (recognitionInterval) {
+        clearInterval(recognitionInterval);
+        recognitionInterval = null;
+    }
+    
+    video.srcObject = null;
+    startButton.disabled = false;
+    stopButton.disabled = true;
+    manualCaptureButton.disabled = true;
+    
+    statusDiv.innerHTML = '<div class="alert alert-warning">Auto-detection stopped.</div>';
+}
+
+function autoCaptureAndRecognize() {
+    if (!stream || !isAutoCaptureEnabled) return;
+    
+    captureAndRecognize(true);
+}
+
+function manualCapture() {
+    if (!stream) {
+        statusDiv.innerHTML = '<div class="alert alert-warning">Please start the camera first.</div>';
+        return;
+    }
+    
+    captureAndRecognize(false);
+}
+
+function captureAndRecognize(isAuto) {
+    const context = canvas.getContext('2d');
+    const overlayContext = overlayCanvas.getContext('2d');
+    
+    // Draw current video frame to canvas
+    context.drawImage(video, 0, 0, 640, 480);
+    
+    // Clear overlay
+    overlayContext.clearRect(0, 0, 640, 480);
+    
+    // Convert canvas to base64 image
+    const imageData = canvas.toDataURL('image/jpeg', 0.8);
+    
+    // Send to server for recognition
+    fetch('{{ url_for("recognize_face") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify({ 
+            image: imageData,
+            auto_capture: isAuto
+        })
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Network response was not ok');
+        }
+        return response.json();
+    })
+    .then(data => {
+        sessionStats.total++;
+        
+        if (data.success) {
+            sessionStats.success++;
+            
+            // Check if this student was recently recognized (cooldown)
+            const studentKey = data.student_id + '_' + data.action;
+            if (recentlyRecognized.has(studentKey)) {
+                console.log(`Skipping duplicate recognition for ${data.student_name}`);
+                return;
+            }
+            
+            // Add to cooldown set
+            recentlyRecognized.add(studentKey);
+            setTimeout(() => {
+                recentlyRecognized.delete(studentKey);
+            }, RECOGNITION_COOLDOWN);
+            
+            addToAttendanceLog(data, isAuto);
+            
+            if (isAuto) {
+                statusDiv.innerHTML = `<div class="alert alert-success">Auto-detected: ${data.student_name} - ${data.action}</div>`;
+            }
+            
+            // Draw face bounding box on overlay
+            if (data.face_location && document.getElementById('showFaceBox').checked) {
+                drawFaceBox(data.face_location, data.student_name);
+            }
+        } else {
+            sessionStats.failed++;
+            if (!isAuto) {
+                statusDiv.innerHTML = `<div class="alert alert-warning">${data.error}</div>`;
+            }
+        }
+        
+        updateSessionSummary();
+    })
+    .catch(error => {
+        sessionStats.failed++;
+        console.error('Error:', error);
+        if (!isAuto) {
+            statusDiv.innerHTML = `<div class="alert alert-danger">Error processing face recognition: ${error.message}</div>`;
+        }
+        updateSessionSummary();
+    });
+}
+
+function addToAttendanceLog(data, isAuto) {
+    const log = document.getElementById('attendanceLog');
+    const timestamp = new Date().toLocaleTimeString();
+    const logEntry = document.createElement('div');
+    
+    logEntry.className = `alert ${data.action === 'Check-in' ? 'alert-info' : 'alert-warning'} mb-2`;
+    logEntry.innerHTML = `
+        <div class="d-flex justify-content-between align-items-start">
+            <div>
+                <strong>${timestamp}</strong> ${isAuto ? '<span class="badge bg-secondary">Auto</span>' : '<span class="badge bg-primary">Manual</span>'}<br>
+                <strong>${data.student_name}</strong> (${data.student_id})<br>
+                <small>${data.action} recorded</small>
+            </div>
+            <span class="badge ${data.action === 'Check-in' ? 'bg-info' : 'bg-warning'}">${data.action}</span>
+        </div>
+    `;
+    
+    // Add to top of log
+    if (log.firstChild) {
+        log.insertBefore(logEntry, log.firstChild);
+    } else {
+        log.appendChild(logEntry);
+    }
+    
+    // Keep only last 20 entries
+    while (log.children.length > 20) {
+        log.removeChild(log.lastChild);
+    }
+    
+    // Update attendance count
+    document.getElementById('attendanceCount').textContent = log.children.length;
+}
+
+function drawFaceBox(faceLocation, studentName) {
+    const overlayContext = overlayCanvas.getContext('2d');
+    const [top, right, bottom, left] = faceLocation;
+    
+    // Scale coordinates back to original size (they were scaled down for processing)
+    const scaleX = 640 / (640 * 0.25); // Assuming 0.25 scale in recognition
+    const scaleY = 480 / (480 * 0.25);
+    
+    const scaledLeft = left * scaleX;
+    const scaledTop = top * scaleY;
+    const scaledRight = right * scaleX;
+    const scaledBottom = bottom * scaleY;
+    const width = scaledRight - scaledLeft;
+    const height = scaledBottom - scaledTop;
+    
+    // Draw bounding box
+    overlayContext.strokeStyle = '#00ff00';
+    overlayContext.lineWidth = 2;
+    overlayContext.strokeRect(scaledLeft, scaledTop, width, height);
+    
+    // Draw label background
+    overlayContext.fillStyle = '#00ff00';
+    overlayContext.fillRect(scaledLeft, scaledTop - 20, width, 20);
+    
+    // Draw label text
+    overlayContext.fillStyle = '#000000';
+    overlayContext.font = '12px Arial';
+    overlayContext.fillText(studentName, scaledLeft + 5, scaledTop - 5);
+    
+    // Display overlay on video
+    const videoContainer = document.getElementById('camera-container');
+    overlayCanvas.style.display = 'block';
+    overlayCanvas.style.position = 'absolute';
+    overlayCanvas.style.top = '0';
+    overlayCanvas.style.left = '0';
+}
+
+function updateSessionSummary() {
+    document.getElementById('totalRecognitions').textContent = sessionStats.total;
+    document.getElementById('successfulRecognitions').textContent = sessionStats.success;
+    document.getElementById('failedRecognitions').textContent = sessionStats.failed;
+}
+
+function checkCameraSupport() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        statusDiv.innerHTML = '<div class="alert alert-danger">Your browser does not support camera access. Please use Chrome, Firefox, or Edge.</div>';
+        startButton.disabled = true;
+        return false;
+    }
+    return true;
+}
+
+// Stop camera when leaving page
+window.addEventListener('beforeunload', stopCamera);
+
+// Initial camera support check
+checkCameraSupport();
+</script>
+{% endblock %}

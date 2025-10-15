@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+
+{% block title %}Debug Face - CogniFace{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2>Face Debug - {{ debug_info.student.name }}</h2>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Student Information</h5>
+            </div>
+            <div class="card-body">
+                <p><strong>Student ID:</strong> {{ debug_info.student.student_id }}</p>
+                <p><strong>Name:</strong> {{ debug_info.student.name }}</p>
+                <p><strong>Photo Path:</strong> <code>{{ debug_info.photo_path }}</code></p>
+                <p><strong>Photo Exists:</strong> 
+                    {% if debug_info.photo_exists %}
+                        <span class="badge bg-success">Yes</span>
+                    {% else %}
+                        <span class="badge bg-danger">No</span>
+                    {% endif %}
+                </p>
+                <p><strong>Has Encoding:</strong> 
+                    {% if debug_info.has_encoding %}
+                        <span class="badge bg-success">Yes</span>
+                    {% else %}
+                        <span class="badge bg-danger">No</span>
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Photo Preview</h5>
+            </div>
+            <div class="card-body text-center">
+                {% if debug_info.photo_exists %}
+                    <img src="{{ url_for('static', filename=debug_info.photo_path) if 'static' in debug_info.photo_path else '/' + debug_info.photo_path }}" 
+                         class="img-fluid" style="max-height: 300px;" 
+                         onerror="this.style.display='none'; document.getElementById('photoError').style.display='block';">
+                    <div id="photoError" style="display: none;" class="alert alert-danger">
+                        Could not load photo. File may be corrupted.
+                    </div>
+                {% else %}
+                    <p class="text-muted">No photo available</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Actions</h5>
+            </div>
+            <div class="card-body">
+                <a href="{{ url_for('debug_students') }}" class="btn btn-secondary">Back to Debug</a>
+                {% if debug_info.photo_exists %}
+                    <form method="POST" action="{{ url_for('reencode_face', student_id=debug_info.student.id) }}" style="display: inline;">
+                        <button type="submit" class="btn btn-warning">Re-encode Face</button>
+                    </form>
+                {% endif %}
+                <a href="{{ url_for('manage_students') }}" class="btn btn-primary">Manage Students</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
